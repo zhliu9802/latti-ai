@@ -15,3 +15,4 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from .cnn import SimpleCNN, simple_cnn
+from .vgg import VGG, vgg11, vgg11_bn, vgg13, vgg13_bn, vgg16, vgg16_bn, vgg19, vgg19_bn

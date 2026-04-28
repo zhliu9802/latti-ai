@@ -15,3 +15,4 @@
 # SPDX-License-Identifier: Apache-2.0
 
 from .mobilenetv2 import MobileNetV2, mobilenetv2
+from .vgg import VGG, vgg11, vgg11_bn, vgg13, vgg13_bn, vgg16, vgg16_bn, vgg19, vgg19_bn
