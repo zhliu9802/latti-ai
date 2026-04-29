@@ -1,29 +1,28 @@
-# 说明
+# Description
 
-该目录包含端到端加密推理示例。每个示例都需要一个 `task/` 文件夹，其中包含经过适配的模型权重、已编译的加密计算图以及配置文件。我们提供了预先准备好的 `task/` 文件夹（除`test_imagenet`），因此你可以直接运行这些示例；或者，你也可以按照本文件下面的[快速开始](./README.md#quick-start) 部分，从头生成这些文件。
+This directory contains end-to-end encrypted inference examples. Each example requires a `task/` folder containing the adapted model weights, the compiled encrypted computation graph, and the configuration files. We provide prebuilt `task/` folders for all examples except `test_imagenet`, so you can run these examples directly. Alternatively, you can generate these files from scratch by following the [Quick Start](./README.md#quick-start) section below in this document.
 
-# 快速开始
+# Quick Start
 
-## 项目构建
+## Build & Install
 
-参考项目根目录README文件中的[Build & Install](../../README.md#build--install)部分。
+Refer to the [Build & Install](../../README.md#build--install) section in the root `README` file of the project.
 
-## 代码运行（以test\_cifar10为例）
+## Code Execution (Using `test_cifar10` as an Example)
 
-每个步骤具体的作用见根目录README文件中的[Quick Start](../../README.md#quick-start)部分，下面仅列出相关命令。主要注意的是：
+For the specific purpose of each step, refer to the [Quick Start](../../README.md#quick-start) section in the root `README` file. Only the relevant commands are listed below. In particular, please note:
+- To test on the MNIST or ImageNet datasets, simply replace `test_cifar10` with `test_mnist` or `test_imagenet`, respectively.
+- The `vgg.py` file defines four models: VGG11, VGG13, VGG16, and VGG19. You can choose whichever model best suits your needs.
 
-- 测试MNIST数据集和ImageNet数据集时，只需要将`test_cifar10`替换为`test_mnist`或`test_imagenet`即可；
-- vgg.py文件中定义了VGG11、VGG13、VGG16、VGG19这4个模型，你可以根据需要选择不同的模型。
-
-### 基线训练
+### Baseline Training
 
 ```bash
 python examples/vgg_demo/test_cifar10/train_vgg.py --epochs 150 --batch-size 128 --lr 0.1 --output-dir ./runs/vgg_demo/cifar10/model --input-shape 3 32 32
 ```
 
-> 注意：MNIST数据集的输入形状需要为`1 32 32`，而不是`1 16 16`
+> Note: the input shape for the MNIST dataset must be `1 32 32`, not `1 16 16`.
 
-运行结果：最优准确率为90.79%
+The best accuracy is **90.79%**.
 
 ```text
 [140/150] lr=0.0100  train 0.0753/97.42%  test 0.3876/89.10%    12.4s
@@ -40,7 +39,7 @@ python examples/vgg_demo/test_cifar10/train_vgg.py --epochs 150 --batch-size 128
 Best accuracy: 90.79%  ->  ./runs/cifar10/model/train_vgg_baseline.pth
 ```
 
-### 算子替换与模型微调
+### Operator Replacement and Model Fine-Tuning
 
 ```bash
 python examples/vgg_demo/test_cifar10/train_vgg.py \
@@ -57,7 +56,7 @@ python examples/vgg_demo/test_cifar10/train_vgg.py \
   --poly-module RangeNormPoly2d
 ```
 
-运行结果：最优准确率为81.00%
+The best accuracy is **81.00%**.
 
 ```text
 [  5/10] lr=0.0010  train 0.3807/87.13%  test nan/80.04% *  25.1s
@@ -69,7 +68,7 @@ python examples/vgg_demo/test_cifar10/train_vgg.py \
 Best accuracy: 81.00%  ->  ./runs/cifar10/model/train_poly.pth
 ```
 
-### FHE编译
+### FHE Compilation
 
 ```bash
 python training/run_compile.py \
@@ -78,51 +77,48 @@ python training/run_compile.py \
   --style=multiplexed
 ```
 
-### 生成底层指令
+### Generate Low-Level Instructions
 
 ```bash
 python inference/interface/gen_mega_ag.py --task-dir ./runs/vgg_demo/cifar10/task
 ```
 
-### 使用CPU或GPU进行加密推理
+### Inference on CPU or GPU
 
 ```bash
 ./build/examples/inference --task-dir ./runs/vgg_demo/cifar10/task --input ./examples/vgg_demo/test_cifar10/task/client/img.csv --verify
 ./build/examples/inference --task-dir ./runs/vgg_demo/cifar10/task --input ./examples/vgg_demo/test_cifar10/task/client/img.csv --gpu --verify
 ```
 
-推理结果为：
+Inference results:
 
-![推理结果](./images/inference_result.png)
+![inference_result](./images/inference_result.png)
 
-# 问题记录
+# Issue Record
 
-## 问题 1：`TypeError: only 0-dimensional arrays can be converted to Python scalars`
-
-开启 `--poly_model_convert` 后，在 Hermite 系数计算阶段报错，调用链：
+After enabling `--poly_model_convert`, the error `TypeError: only 0-dimensional arrays can be converted to Python scalars` occurs in the Hermite coefficient calculation stage, with the call stack:
 
 - [`replace_activation_with_poly()`](../../training/nn_tools/replace.py:50)
 - [`get_hermite_coeffs_for_module()`](../../training/nn_tools/eval_fn_hat_for_aespa.py:166)
 - [`compute_coefficients()`](../../training/nn_tools/eval_fn_hat_for_aespa.py:84)
 - [`quad()`](../../training/nn_tools/eval_fn_hat_for_aespa.py:110)
 
-**原因**：`scipy.integrate.quad` 需要“标量输入 -> 标量输出”的被积函数，但当前实现中：
+**Reason**：`scipy.integrate.quad` requires the integrand to be a function of the form “scalar input -> scalar output”, but in the current implementation:
 
-- [`numpy_func()`](../../training/nn_tools/eval_fn_hat_for_aespa.py:185) 对标量输入也可能返回 shape=(1,) 的数组（见 [`return result.numpy()`](../../training/nn_tools/eval_fn_hat_for_aespa.py:189)）；
-- `quad`的[lambda](../../training/nn_tools/eval_fn_hat_for_aespa.py:111) 又显式包了 `np.array(...)`，进一步导致返回 `ndarray` 而非 Python float。
+- [`numpy_func()`](../../training/nn_tools/eval_fn_hat_for_aespa.py:185) may return an array of shape=(1,) (see the [`return result.numpy()`](../../training/nn_tools/eval_fn_hat_for_aespa.py:189)).
+- `quad` [lambda](../../training/nn_tools/eval_fn_hat_for_aespa.py:111) explicitly wraps `np.array(...)` resulting in a numpy `ndarray` instead of a Python float.
 
-### 建议修复点（`training/nn_tools/eval_fn_hat_for_aespa.py`）
+## Suggestions for Fixing the Issue
 
-1. **保证积分被积函数返回标量**（核心）
-   - 在 [`compute_coefficients()`](../../training/nn_tools/eval_fn_hat_for_aespa.py:84) 中，确保 `quad` 调用的函数最终 `return float(...)`。
-   - 不要在 [`quad`](../../training/nn_tools/eval_fn_hat_for_aespa.py:110) [调用处](../../training/nn_tools/eval_fn_hat_for_aespa.py:110) 使用 `np.array(...)` 包装返回值。
-2. **保证** **`numpy_func`** **在标量输入时返回标量**
-   - 在 [`numpy_func()`](../../training/nn_tools/eval_fn_hat_for_aespa.py:185) 内判断输入是否标量；
-   - 标量输入返回 `float`；数组输入继续返回 `ndarray`。
-3. **可选增强：在** **`compute_coefficients`** **做统一兜底**
-   - 对 `fx` 做 `np.asarray(fx)` 后，若 `size == 1` 则转 `float`，避免传给 `quad` 的是非标量对象。
+1. **Ensure the integrand returns a scalar** (core).
+   - In [`compute_coefficients()`](../../training/nn_tools/eval_fn_hat_for_aespa.py:84), ensure `quad` finally `return float(...)`.
+   - Do not use [`quad`](../../training/nn_tools/eval_fn_hat_for_aespa.py:110) [call site](../../training/nn_tools/eval_fn_hat_for_aespa.py:110) to wrap `np.array(...)` in the return value.
+2. **Ensure** `numpy_func` returns a scalar when input is a scalar
+   - In [`numpy_func()`](../../training/nn_tools/eval_fn_hat_for_aespa.py:185) check if the input is a scalar.
+   - Scalar input returns `float`; array input returns `ndarray`.
+3. **Optional enhancement: `compute_coefficients`**. After doing `np.asarray(fx)`, if `size == 1`, convert to `float`.
 
-### 参考修复思路（伪代码）
+## Reference Fixing the Issue (Pseudo-Code)
 
 ```python
 # training/nn_tools/eval_fn_hat_for_aespa.py
